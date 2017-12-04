@@ -38,6 +38,17 @@ class TLDetector(object):
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
 
+        #setup stop line positions in TrafficLight-style object for use later on closestwaypoint
+        self.stop_line_positions_poses = []
+        for stop in self.config['stop_line_positions']:
+            s = TrafficLight()
+            s.pose.pose.position.x = stop[0]
+            s.pose.pose.position.y = stop[1]
+            s.pose.pose.position.z = 0
+            #rospy.loginfo('adding stop_line_position - [{},{}]'.format(stop[0], stop[1]))
+            self.stop_line_positions_poses.append(s)
+
+
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
@@ -127,11 +138,20 @@ class TLDetector(object):
             location and color
 
         Returns:
-            int: index of waypoint closes to the upcoming stop line for a traffic light (-1 if none exists)
+            int: index of waypoint closer to the upcoming stop line for a traffic light (-1 if none exists)
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
         light = None
+
+        # If there is a signal in sight, returns the car waypoint right before the stop line, alongside
+        # with signal status
+
+        # Steps to perform:
+        # 1. Find the next upcoming light position from car pose given a certain range
+        # 2. Find the stop_line_position before such traffic signal position
+        # 3. Find the waypoint just before and this stop_line_position 
+
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
