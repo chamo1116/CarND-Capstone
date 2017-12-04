@@ -11,3 +11,5 @@ profile.tmp
 
 Bosch/
 Bosch_Small_Traffic_Lights_Dataset.tgz
+
+tl_train/train.pickle
