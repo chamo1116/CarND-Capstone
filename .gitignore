@@ -1,6 +1,8 @@
 *.py[cod]
 *.swp
 *.swo
+.DS_Store
+._.DS_Store
 
 build
 devel
