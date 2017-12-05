@@ -10,6 +10,7 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
+import math
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -60,6 +61,7 @@ class TLDetector(object):
         self.last_wp = -1
         self.state_count = 0
 
+        rospy.loginfo('Traffic light detector initialized')
         rospy.spin()
 
     def pose_cb(self, msg):
@@ -82,6 +84,7 @@ class TLDetector(object):
         self.has_image = True
         self.camera_image = msg
         light_wp, state = self.process_traffic_lights()
+        #rospy.loginfo("process_traffic_lights: {},{}".format(light_wp, state))
 
         '''
         Publish upcoming red lights at camera frequency.
@@ -101,18 +104,40 @@ class TLDetector(object):
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
         self.state_count += 1
 
-    def get_closest_waypoint(self, pose):
+    def get_distance_between_poses( self, a, b ):
+        return math.sqrt( (a.position.x - b.position.x)**2 + (a.position.y - b.position.y)**2 )
+
+    def get_closest_waypoint(self, pose, waypoints,  mode=None ):
         """Identifies the closest path waypoint to the given position
             https://en.wikipedia.org/wiki/Closest_pair_of_points_problem
         Args:
             pose (Pose): position to match a waypoint to
+            waypoints (list): the reference list of waypoints to search on
+            mode: "nearest" -> returns nearest waypoint regardless of direction. 
+                  "forward" -> returns nearest waypoint in forward direction
 
         Returns:
             int: index of the closest waypoint in self.waypoints
 
         """
-        #TODO implement
-        return 0
+
+        if waypoints==None or pose==None:
+            rospy.logerr("No waypoint list or pose specified in get_closest_waypoint")
+            return -1
+
+        #implement search, nearest
+        min_dist = float("inf")
+        min_idx = None
+        search_range = 400 
+
+        for i, wp in enumerate(waypoints):
+            dist = self.get_distance_between_poses( wp.pose.pose, pose )
+
+            if (dist < min_dist) and (dist<search_range):
+                min_dist = dist
+                min_idx = i
+        
+        return min_idx
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
@@ -152,19 +177,45 @@ class TLDetector(object):
         # 2. Find the stop_line_position before such traffic signal position
         # 3. Find the waypoint just before and this stop_line_position 
 
+        if(self.pose==None):
+            return -1, TrafficLight.UNKNOWN
 
-        # List of positions that correspond to the line to stop in front of for a given intersection
-        stop_line_positions = self.config['stop_line_positions']
-        if(self.pose):
-            car_position = self.get_closest_waypoint(self.pose.pose)
 
         #TODO find the closest visible traffic light (if one exists)
+        # 1. Find upcoming light position from our current car pose
+        light_idx = self.get_closest_waypoint( self.pose.pose, self.lights )  # foward look
 
-        if light:
-            state = self.get_light_state(light)
-            return light_wp, state
-        self.waypoints = None
-        return -1, TrafficLight.UNKNOWN
+        if light_idx == None:
+            rospy.loginfo('couldn\'t find light index for car pose: {},{}'.format(self.pose.pose.position.x, self.pose.pose.position.y)) 
+            return -1, TrafficLight.UNKNOWN
+
+        # 2. Find the stop_line_position closest to the found light index and make sure its the upcoming one for the car
+        stop_line_idx    = self.get_closest_waypoint( self.lights[light_idx].pose.pose, self.stop_line_positions_poses ) # closest look
+        stop_forward_idx = self.get_closest_waypoint( self.pose.pose, self.stop_line_positions_poses )  # fowards look TODO
+
+        if(stop_line_idx != stop_forward_idx):
+            #likely car is away from stop line still ?
+            rospy.loginfo('traffic light upcoming but there\s no stop line position found')
+            return -1, TrafficLight.UNKNOWN
+
+        # 3. Find the car waypoint closest to the stop line
+        stop_waypoint_idx = self.get_closest_waypoint( 
+                self.stop_line_positions_poses[stop_line_idx].pose.pose, 
+                self.waypoints.waypoints )  
+
+        if( stop_waypoint_idx == None ):
+            rospy.loginfo('Couldnt find waypoint in process_traffic_lights()')
+            return -1, TrafficLight.UNKNOWN
+
+        #TODO. 
+        # add glue for real classifer here:
+        #
+        # self.get_light_state( self.lights[light_idx] )
+        # 
+        # using sim state for now
+        state = self.lights[light_idx].state  #this is only valid within simulator
+
+        return stop_waypoint_idx, state
 
 if __name__ == '__main__':
     try:
