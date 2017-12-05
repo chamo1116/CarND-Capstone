@@ -1,9 +1,17 @@
 import yaml
-import os.path
+import os
 import pickle
 import sys
 import numpy as np
 import cv2
+from shutil import copyfile
+
+# Taken from TrafficLight message definition
+# ros/src/styx_msgs/msg/TrafficLight.msg
+UNKNOWN = 4
+GREEN = 2
+YELLOW = 1
+RED = 0
 
 files_dir = '../Bosch/'
 samples_file = 'train.yaml'
@@ -11,20 +19,41 @@ samples_pickle_path = './train.pickle'
 
 samples_file_path = os.path.join(files_dir, samples_file)
 
+train_dir = 'train'
+validation_dir = 'validation'
+
+data_base_dest_dir = '../Bosch/classifier_data'
+data_split_dirs = [train_dir, validation_dir]
+color_dirs = map(lambda x: str(x), [RED, YELLOW, GREEN, UNKNOWN])
+
 green_labels = ('GreenStraightRight', 'GreenStraightLeft', 'GreenStraight', 'GreenRight', 'Green', 'GreenLeft')
 yellow_labels = ('Yellow')
 red_labels = ('RedStraightLeft', 'RedStraight', 'RedRight', 'RedLeft', 'Red')
 
-# Taken from TrafficLight message definition
-# ros/src/styx_msgs/msg/TrafficLight.msg
-UNKNOWN = 4
-GREEN = 3
-YELLOW = 1
-RED = 0
-
 IMG_WIDTH = 1280
 IMG_SIDE_CROP = 180
 IMG_SIDE_LIGHT_TOLERANCE = 10
+
+def create_dest_dirs():
+    for split_dir in data_split_dirs:
+        for color_dir in color_dirs:
+            directory = os.path.normpath(os.path.join(data_base_dest_dir, split_dir, color_dir))
+            if os.path.exists(directory):
+                print('Directory {} exists'.format(directory))
+            else:
+                print('Creating directory {} ...'.format(directory))
+                os.makedirs(directory)
+
+def copy_samples_to_dest_split_dir(samples, split_dir):
+    for sample in samples:
+        src_path = os.path.normpath(os.path.join(files_dir, sample['path']))
+
+        filename = os.path.basename(sample['path'])
+        color_label = str(sample['label'])
+        dest_path_parts = (data_base_dest_dir, split_dir, color_label, filename)
+        full_dest_path = os.path.normpath(os.path.join(*dest_path_parts))
+
+        copyfile(src_path, full_dest_path)
 
 def samples_from_storage():
     samples = None
@@ -135,6 +164,7 @@ def samples_of_color(samples, color):
     return filter(lambda sample: sample['label'] == color, samples)
 
 def main():
+    create_dest_dirs()
     samples = samples_from_storage()
     if samples is None:
         print('No samples to work with')
@@ -154,6 +184,14 @@ def main():
     print("{} yellow samples".format(len(samples_of_color(final_samples, YELLOW))))
     print("{} green samples".format(len(samples_of_color(final_samples, GREEN))))
     print("{} unknown samples".format(len(samples_of_color(final_samples, UNKNOWN))))
+
+    np.random.shuffle(final_samples)
+    total_out_samples = len(final_samples)
+    nb_validation_samples = total_out_samples // 6
+    print('{} train samples'.format(total_out_samples - nb_validation_samples))
+    print('{} validation samples'.format(nb_validation_samples))
+    copy_samples_to_dest_split_dir(final_samples[:nb_validation_samples], validation_dir)
+    copy_samples_to_dest_split_dir(final_samples[nb_validation_samples:], train_dir)
 
 if __name__ == '__main__':
     main()
