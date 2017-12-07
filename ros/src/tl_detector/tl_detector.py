@@ -11,6 +11,8 @@ import tf
 import cv2
 import yaml
 import math
+import PyKDL
+from tf.transformations import euler_from_quaternion
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -134,8 +136,43 @@ class TLDetector(object):
             dist = self.get_distance_between_poses( wp.pose.pose, pose )
 
             if (dist < min_dist) and (dist<search_range):
-                min_dist = dist
-                min_idx = i
+                if (mode == None ):
+                    min_dist = dist
+                    min_idx = i
+                elif( mode == "forward" ): 
+                    # pose quaternion
+                    p_q = PyKDL.Rotation.Quaternion(pose.orientation.x,
+                            pose.orientation.y,
+                            pose.orientation.z,
+                            pose.orientation.w)
+
+
+                    # let's use scalar product to find the angle between the car orientation vector and car/base_point vector
+                    car_orientation = p_q * PyKDL.Vector(1.0, 0.0, 0.0)
+
+
+                    xyz_position = pose.position
+                    quaternion_orientation = pose.orientation
+
+                    p = xyz_position
+                    qo = quaternion_orientation
+
+                    p_list = [p.x, p.y, p.z]
+                    qo_list = [qo.x, qo.y, qo.z, qo.w]
+                    euler = euler_from_quaternion(qo_list)
+                    yaw_rad = euler[2]
+                    print("yaw_rad {0}, car_orientation {1}".format(yaw_rad, car_orientation))
+                    # example output
+                    # yaw_rad 0.0872679286763, car_orientation [    0.996195,   0.0871572,           0]
+                    # yaw_rad 0.00123239892429, car_orientation [    0.999999,   0.0012324,           0]
+                    # yaw_rad 0.0872679286763, car_orientation [    0.996195,   0.0871572,           0]
+                   pass
+
+                
+
+
+
+            
         
         return min_idx
 
