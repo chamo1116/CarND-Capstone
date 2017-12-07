@@ -13,6 +13,7 @@ import yaml
 import math
 import PyKDL
 from tf.transformations import euler_from_quaternion
+import numpy as np
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -20,6 +21,7 @@ class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
 
+        self.debug = False
         self.pose = None
         self.waypoints = None
         self.camera_image = None
@@ -130,7 +132,7 @@ class TLDetector(object):
         #implement search, nearest
         min_dist = float("inf")
         min_idx = None
-        search_range = 400 
+        search_range = 300 
 
         for i, wp in enumerate(waypoints):
             dist = self.get_distance_between_poses( wp.pose.pose, pose )
@@ -140,40 +142,30 @@ class TLDetector(object):
                     min_dist = dist
                     min_idx = i
                 elif( mode == "forward" ): 
-                    # pose quaternion
-                    p_q = PyKDL.Rotation.Quaternion(pose.orientation.x,
-                            pose.orientation.y,
-                            pose.orientation.z,
-                            pose.orientation.w)
+                    po = pose.orientation         #pose orientation
+                    wpo = wp.pose.pose.orientation #waypoint orientation 
+                    wpp = wp.pose.pose.position
 
+                    car_vector = PyKDL.Rotation.Quaternion(po.x,po.y,po.z,po.w) * PyKDL.Vector(1,0,0) # change the reference frame of 1,0,0 to the orientation of the car
+                    wp_vector = PyKDL.Vector( wpp.x-pose.position.x, wpp.y-pose.position.y, 0 )
 
-                    # let's use scalar product to find the angle between the car orientation vector and car/base_point vector
-                    car_orientation = p_q * PyKDL.Vector(1.0, 0.0, 0.0)
+                    #dot product is the cosinus of angle between both
+                    angle = np.arccos( PyKDL.dot( car_vector, wp_vector ) / car_vector.Norm() / wp_vector.Norm() )
 
+                    if angle < np.pi/2:
+                        min_dist = dist
+                        min_idx = i
 
-                    xyz_position = pose.position
-                    quaternion_orientation = pose.orientation
-
-                    p = xyz_position
-                    qo = quaternion_orientation
-
-                    p_list = [p.x, p.y, p.z]
-                    qo_list = [qo.x, qo.y, qo.z, qo.w]
-                    euler = euler_from_quaternion(qo_list)
-                    yaw_rad = euler[2]
-                    print("yaw_rad {0}, car_orientation {1}".format(yaw_rad, car_orientation))
-                    # example output
-                    # yaw_rad 0.0872679286763, car_orientation [    0.996195,   0.0871572,           0]
-                    # yaw_rad 0.00123239892429, car_orientation [    0.999999,   0.0012324,           0]
-                    # yaw_rad 0.0872679286763, car_orientation [    0.996195,   0.0871572,           0]
-                   pass
-
-                
-
-
-
-            
-        
+                    # we could use the raw for this math?
+                    # 
+                    # xyz_position = pose.position
+                    # quaternion_orientation = pose.orientation
+                    # p = xyz_position
+                    # qo = quaternion_orientation
+                    # p_list = [p.x, p.y, p.z]
+                    # qo_list = [qo.x, qo.y, qo.z, qo.w]
+                    # euler = euler_from_quaternion(qo_list)
+                    # yaw_rad = euler[2]
         return min_idx
 
     def get_light_state(self, light):
@@ -220,19 +212,21 @@ class TLDetector(object):
 
         #TODO find the closest visible traffic light (if one exists)
         # 1. Find upcoming light position from our current car pose
-        light_idx = self.get_closest_waypoint( self.pose.pose, self.lights )  # foward look
+        light_idx = self.get_closest_waypoint( self.pose.pose, self.lights, "forward" )  # foward look
 
         if light_idx == None:
-            rospy.loginfo('couldn\'t find light index for car pose: {},{}'.format(self.pose.pose.position.x, self.pose.pose.position.y)) 
+            if(self.debug):
+                rospy.loginfo('couldn\'t find light index for car pose: {},{}'.format(self.pose.pose.position.x, self.pose.pose.position.y))
             return -1, TrafficLight.UNKNOWN
 
         # 2. Find the stop_line_position closest to the found light index and make sure its the upcoming one for the car
         stop_line_idx    = self.get_closest_waypoint( self.lights[light_idx].pose.pose, self.stop_line_positions_poses ) # closest look
-        stop_forward_idx = self.get_closest_waypoint( self.pose.pose, self.stop_line_positions_poses )  # fowards look TODO
+        stop_forward_idx = self.get_closest_waypoint( self.pose.pose, self.stop_line_positions_poses, "forward" )  # foward look
 
         if(stop_line_idx != stop_forward_idx):
             #likely car is away from stop line still ?
-            rospy.loginfo('traffic light upcoming but there\s no stop line position found')
+            if(self.debug):
+                rospy.loginfo('traffic light upcoming but there\s no stop line position found')
             return -1, TrafficLight.UNKNOWN
 
         # 3. Find the car waypoint closest to the stop line
