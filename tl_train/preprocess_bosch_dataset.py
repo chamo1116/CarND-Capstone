@@ -55,6 +55,20 @@ def copy_samples_to_dest_split_dir(samples, split_dir):
 
         copyfile(src_path, full_dest_path)
 
+def write_processed_images_to_dest_split_dir(samples, split_dir):
+    for sample in samples:
+        src_path = os.path.normpath(os.path.join(files_dir, sample['path']))
+
+        filename = os.path.basename(sample['path'])
+        color_label = str(sample['label'])
+        dest_path_parts = (data_base_dest_dir, split_dir, color_label, filename)
+        full_dest_path = os.path.normpath(os.path.join(*dest_path_parts))
+
+        orig_img = cv2.imread(src_path)
+        cropped_img = orig_img[:,IMG_SIDE_CROP:IMG_WIDTH-IMG_SIDE_CROP];
+        resized_img = cv2.resize(cropped_img, (400, 300), interpolation = cv2.INTER_CUBIC)
+        cv2.imwrite(full_dest_path, resized_img)
+
 def samples_from_storage():
     samples = None
     if (os.path.isfile(samples_pickle_path)):
@@ -190,8 +204,10 @@ def main():
     nb_validation_samples = total_out_samples // 6
     print('{} train samples'.format(total_out_samples - nb_validation_samples))
     print('{} validation samples'.format(nb_validation_samples))
-    copy_samples_to_dest_split_dir(final_samples[:nb_validation_samples], validation_dir)
-    copy_samples_to_dest_split_dir(final_samples[nb_validation_samples:], train_dir)
+    #copy_samples_to_dest_split_dir(final_samples[:nb_validation_samples], validation_dir)
+    #copy_samples_to_dest_split_dir(final_samples[nb_validation_samples:], train_dir)
+    write_processed_images_to_dest_split_dir(final_samples[:nb_validation_samples], validation_dir)
+    write_processed_images_to_dest_split_dir(final_samples[nb_validation_samples:], train_dir)
 
 if __name__ == '__main__':
     main()
