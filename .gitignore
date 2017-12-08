@@ -8,3 +8,5 @@ build
 devel
 
 profile.tmp
+
+/container_logs/*
