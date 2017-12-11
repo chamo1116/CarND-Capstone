@@ -20,7 +20,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 img_width = 32
 img_height = 32
 
-top_model_weights_path = 'bottleneck_fc_model.h5'
+model_save_path = 'bottleneck_fc_full_model.h5'
 train_data_dir = '../training/labeled-split-images/train'
 validation_data_dir = '../training/labeled-split-images/validation'
 nb_train_samples = 496
@@ -28,10 +28,12 @@ nb_validation_samples = 192
 epochs = 20
 batch_size = 16
 
+# JJ TODO don't hardcode
 nb_train_r = 129
 nb_train_y = 62
 nb_train_g = 305
 
+# JJ TODO don't hardcode
 nb_val_r = 58
 nb_val_y = 17
 nb_val_g = 117
@@ -68,11 +70,11 @@ def save_bottleneck_features():
 
 def train_top_model():
     train_data = np.load(open('bottleneck_features_train.npy'))
-    # TODO don't hardcode this
+    # JJ TODO don't hardcode this
     train_labels = np.array(([[1, 0, 0]] * nb_train_r) + ([[0, 1, 0]] * nb_train_y) + ([[0, 0, 1]] * nb_train_g))
 
     validation_data = np.load(open('bottleneck_features_validation.npy'))
-    # TODO don't hardcode this
+    # JJ TODO don't hardcode this
     validation_labels = np.array(([[1, 0, 0]] * nb_val_r) + ([[0, 1, 0]] * nb_val_y) + ([[0, 0, 1]] * nb_val_g))
 
     model = Sequential()
@@ -89,7 +91,7 @@ def train_top_model():
               batch_size=batch_size,
               verbose=2,
               validation_data=(validation_data, validation_labels))
-    model.save_weights(top_model_weights_path)
+    model.save(model_save_path)
 
 save_bottleneck_features()
 train_top_model()

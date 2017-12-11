@@ -64,8 +64,8 @@ def main():
     svm.setC(2.67)
     svm.setGamma(5.383)
     svm.train(train_features, cv2.ml.ROW_SAMPLE, train_labels)
-    # TODO figure out why save does't "just work"
-    #svm.save('svm_data.dat')
+
+    svm.save('svm_data.dat')
 
     result = svm.predict(test_features)[1]
     result = np.append([], result) # TODO do this a better way
