@@ -25,7 +25,7 @@ train_data_dir = '../training/labeled-split-images/train'
 validation_data_dir = '../training/labeled-split-images/validation'
 nb_train_samples = 496
 nb_validation_samples = 192
-epochs = 20
+epochs = 10
 batch_size = 16
 
 # JJ TODO don't hardcode
