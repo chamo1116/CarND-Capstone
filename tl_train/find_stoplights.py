@@ -92,7 +92,8 @@ def main():
     svm = cv2.ml.SVM_load('svm_data.dat')
     hot_windows = search_windows(img, full_window_list, svm)
 
-    model_bottom = applications.VGG16(include_top=False, weights='imagenet')
+    model_bottom = applications.VGG16(include_top=False, weights=None)
+    model_bottom.load_weights('vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5')
     model_top = load_model('bottleneck_fc_full_model.h5')
 
     votes = [0, 0, 0]
