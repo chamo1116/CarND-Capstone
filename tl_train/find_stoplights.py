@@ -1,38 +1,28 @@
-import rospy
-import os
 import cv2
 import numpy as np
-import keras
-import operator
-from keras import applications
+from train_tl_svm import hog_for_img
 from keras.models import load_model
 from keras.preprocessing import image
 from keras.applications.vgg16 import preprocess_input
-from keras import backend as K
-from styx_msgs.msg import TrafficLight
+from keras.models import Sequential
+from keras import applications
+import operator
 
 window_param_sets = [
     dict(x_start_stop=[48, 752], y_start_stop=[0, 480], xy_window=(192, 192), xy_overlap=(0.75, 0.75)),
     dict(x_start_stop=[36, 762], y_start_stop=[256, 600], xy_window=(96, 96), xy_overlap=(0.5, 0.5))
 ]
 
-num_bins = 16
+def draw_boxes(img, bboxes, color=(255, 0, 0), thick=6):
+    draw_img = np.copy(img)
+    for bbox in bboxes:
+        cv2.rectangle(img, bbox[0], bbox[1], color, thick)
+    return img
 
-# Code heavily inspired by:
-# http://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_ml/py_svm/py_svm_opencv/py_svm_opencv.html#svm-opencv
-def hog_for_img(img):
-    gx = cv2.Sobel(img, cv2.CV_32F, 1, 0)
-    gy = cv2.Sobel(img, cv2.CV_32F, 0, 1)
-    mag, ang = cv2.cartToPolar(gx, gy)
-    # quantizing binvalues in (0...num_bins)
-    bins = np.int32(num_bins * ang / (2 * np.pi))
-    bin_cells = bins[:10, :10], bins[10:, :10], bins[:10, 10:], bins[10:, 10:]
-    mag_cells = mag[:10, :10], mag[10:, :10], mag[:10, 10:], mag[10:, 10:]
-    hists = [np.bincount(b.ravel(), m.ravel(), num_bins) for b, m in zip(bin_cells, mag_cells)]
-    # hist is a 64 bit vector
-    hist = np.hstack(hists)
-    return hist
-
+# Define a function that takes an image,
+# start and stop positions in both x and y, 
+# window size (x and y dimensions),  
+# and overlap fraction (for both x and y)
 def slide_window(img, x_start_stop=[None, None], y_start_stop=[None, None], 
                     xy_window=(64, 64), xy_overlap=(0.5, 0.5)):
     """
@@ -92,47 +82,36 @@ def index_for_max(values):
     index, value = max(enumerate(values), key=operator.itemgetter(1))
     return index
 
-class TLClassifier(object):
-    def __init__(self):
-        this_dir = os.path.dirname(os.path.realpath(__file__))
-        self.svm = cv2.ml.SVM_load(os.path.join(this_dir, 'svm_data.dat'))
-        self.cnn_bottom = applications.VGG16(include_top=False, weights=None)
-        self.cnn_bottom.load_weights(os.path.join(this_dir, 'vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'))
-        self.cnn_top = load_model(os.path.join(this_dir, 'bottleneck_fc_full_model.h5'))
+def main():
+    img = cv2.imread('./traffic_lights.png')
+    window_lists = [slide_window(img, **params) for params in window_param_sets]
+    full_window_list = []
+    for window_list in window_lists:
+        full_window_list += window_list
 
-    def get_classification(self, img):
-        """Determines the color of the traffic light in the image
+    svm = cv2.ml.SVM_load('svm_data.dat')
+    hot_windows = search_windows(img, full_window_list, svm)
 
-        Args:
-            img (cv::Mat): image containing the traffic light
+    model_bottom = applications.VGG16(include_top=False, weights=None)
+    model_bottom.load_weights('vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5')
+    model_top = load_model('bottleneck_fc_full_model.h5')
 
-        Returns:
-            int: ID of traffic light color (specified in styx_msgs/TrafficLight)
+    votes = [0, 0, 0]
+    for window in hot_windows:
+        test_img_crop = img[window[0][1]:window[1][1], window[0][0]:window[1][0]]
+        test_img = cv2.resize(test_img_crop, (32, 32))
+        x = image.img_to_array(test_img)
+        x = preprocess_input(x)
 
-        """
-        window_lists = [slide_window(img, **params) for params in window_param_sets]
-        full_window_list = []
-        for window_list in window_lists:
-            full_window_list += window_list
-        hot_windows = search_windows(img, full_window_list, self.svm)
+        bottom_out = model_bottom.predict(np.array([x]))
+        predictions = model_top.predict(bottom_out)[0]
+        prediction = index_for_max(predictions)
+        votes[prediction] += 1
+    prediction = index_for_max(votes)
+    print(prediction)
 
-        votes = [0, 0, 0]
+    rect_img = draw_boxes(img, hot_windows, thick=2)
+    cv2.imwrite('./found_traffic_lights.png', rect_img)
 
-        # https://github.com/fchollet/keras/issues/2397
-        # handle weird multithreading async wonkiness
-        graph = K.get_session().graph
-        with graph.as_default():
-            for window in hot_windows:
-                test_img_crop = img[window[0][1]:window[1][1], window[0][0]:window[1][0]]
-                test_img = cv2.resize(test_img_crop, (32, 32))
-                x = image.img_to_array(test_img)
-                x = preprocess_input(x)
-
-                bottom_out = self.cnn_bottom.predict(np.array([x]))
-                predictions = self.cnn_top.predict(bottom_out)[0]
-                prediction = index_for_max(predictions)
-                votes[prediction] += 1
-        prediction = index_for_max(votes)
-        rospy.logwarn('Prediction: {}'.format(prediction))
-
-        return TrafficLight.UNKNOWN
+if __name__ == '__main__':
+    main()

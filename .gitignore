@@ -8,3 +8,11 @@ build
 devel
 
 profile.tmp
+
+Bosch/
+Bosch_Small_Traffic_Lights_Dataset.tgz
+
+tl_train/train.pickle
+
+# this weights file is enormous; do not commit it!
+vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5
