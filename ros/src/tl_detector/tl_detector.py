@@ -238,13 +238,15 @@ class TLDetector(object):
             rospy.loginfo('Couldnt find waypoint in process_traffic_lights()')
             return -1, TrafficLight.UNKNOWN
 
-        #TODO. 
-        # add glue for real classifer here:
         #
-        # self.get_light_state( self.lights[light_idx] )
-        # 
-        # using sim state for now
-        state = self.lights[light_idx].state  #this is only valid within simulator
+        # Finally call classifier. real or simulated 
+        #
+        use_sim_lights = False
+        if(use_sim_lights):
+            state = self.lights[light_idx].state  #this is only valid within simulator
+        else:
+            # real classifier
+            state = self.get_light_state( self.lights[light_idx] )
 
         return stop_waypoint_idx, state
 
