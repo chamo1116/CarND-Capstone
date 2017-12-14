@@ -31,10 +31,11 @@ class Controller(object):
 
         self.throttle_controller = PID(0.15, 0.0, 0.05, mn=decel_limit, mx=accel_limit)
 
-        self.low_pass_filter = LowPassFilter(10, 1)
+        self.low_pass_filter = LowPassFilter(12.0, 1)
 
         self.last_timestamp = None
 
+        self.counter = 0
 
 
     def control(self, target_angular_velocity, target_linear_velocity, current_angular_velocity, current_linear_velocity, dbw_enabled):
@@ -55,9 +56,9 @@ class Controller(object):
             cte = target_linear_velocity - current_linear_velocity
             acceleration = self.throttle_controller.step(cte, dt)
 
-            # filtvalue = self.low_pass_filter.filt(steer)
-            # if self.low_pass_filter.ready:
-            #     steer = self.low_pass_filter.get()
+            filtvalue = self.low_pass_filter.filt(acceleration)
+            if self.low_pass_filter.ready:
+                acceleration = self.low_pass_filter.get()
 
             if acceleration > 0:
                 throttle = acceleration
@@ -66,7 +67,16 @@ class Controller(object):
 
 
         self.last_timestamp = current_timestamp
-        rospy.loginfo('SENDING - [throttle,brake,steer]:[{:.4f},{:.4f},{:.4f}], [cA,cL]:[{:.4f},{:.4f}]m [tA, tL]:[{:.4f},{:.4f}]'.format(throttle, brake, steer,current_angular_velocity, current_linear_velocity,target_angular_velocity, target_linear_velocity))
+
+        if target_linear_velocity != 10.0 or self.counter > 0:
+            if target_linear_velocity == 10.0:
+                self.counter = self.counter - 1
+            else:
+                self.counter = 20
+
+            rospy.loginfo('SENDING - [throttle,brake,steer]:[{:.4f},{:.4f},{:.4f}], [cA,cL]:[{:.4f},{:.4f}]m [tA, tL]:[{:.4f},{:.4f}]'.format(throttle, brake, steer,current_angular_velocity, current_linear_velocity,target_angular_velocity, target_linear_velocity))
+
+
         return throttle, brake, steer
 
     def reset(self):
