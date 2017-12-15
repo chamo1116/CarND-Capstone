@@ -35,8 +35,6 @@ class Controller(object):
 
         self.last_timestamp = None
 
-        self.counter = 0
-
 
     def control(self, target_angular_velocity, target_linear_velocity, current_angular_velocity, current_linear_velocity, dbw_enabled):
         # TODO: Change the arg, kwarg list to suit your needs
@@ -46,7 +44,6 @@ class Controller(object):
             return 0., 0., 0.
 
         steer = self.steering_controller.get_steering(target_linear_velocity, target_angular_velocity, current_linear_velocity)
-        # steer = 0.
         throttle = 0.
         brake = 0.
 
@@ -68,14 +65,7 @@ class Controller(object):
 
         self.last_timestamp = current_timestamp
 
-        if target_linear_velocity != 10.0 or self.counter > 0:
-            if target_linear_velocity == 10.0:
-                self.counter = self.counter - 1
-            else:
-                self.counter = 20
-
-            rospy.loginfo('SENDING - [throttle,brake,steer]:[{:.4f},{:.4f},{:.4f}], [cA,cL]:[{:.4f},{:.4f}]m [tA, tL]:[{:.4f},{:.4f}]'.format(throttle, brake, steer,current_angular_velocity, current_linear_velocity,target_angular_velocity, target_linear_velocity))
-
+        rospy.loginfo('SENDING - [throttle,brake,steer]:[{:.4f},{:.4f},{:.4f}], [cA,cL]:[{:.4f},{:.4f}]m [tA, tL]:[{:.4f},{:.4f}]'.format(throttle, brake, steer,current_angular_velocity, current_linear_velocity,target_angular_velocity, target_linear_velocity))
 
         return throttle, brake, steer
 

@@ -41,7 +41,7 @@ class WaypointUpdater(object):
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        self.base_waypoint_subscriber = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
@@ -57,7 +57,7 @@ class WaypointUpdater(object):
         self.loop_frequency = 2 # Hz
 
         # Max velocity
-        self.max_velocity = 10 # mph
+        self.max_velocity = None # miles per second
 
         #Traffic light index
         self.traffic_light_index = NO_TRAFFIC_LIGHT # no traffic light.
@@ -167,8 +167,18 @@ class WaypointUpdater(object):
         self.current_pose = msg.pose
 
     def waypoints_cb(self, lane):
+        if self.base_waypoints != None:
+            return
+
+        self.base_waypoint_subscriber.unregister()
+        self.base_waypoint_subscriber = None
+
+        self.max_velocity = max([self.get_waypoint_velocity(wp) for wp in lane.waypoints]) * .99
+        rospy.loginfo('MAX_VELOCITY : {}'.format(self.max_velocity))
+
+        self.base_waypoints_count = len(lane.waypoints)
         self.base_waypoints = lane.waypoints
-        self.base_waypoints_count = len(self.base_waypoints)
+
 
     def traffic_cb(self, msg):
         self.traffic_light_index = msg.data;

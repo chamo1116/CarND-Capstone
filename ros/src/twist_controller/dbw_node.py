@@ -55,7 +55,7 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
         # Loop Rate
-        self.loop_frequency = 15 # Hz
+        self.loop_frequency = 50 # Hz
 
         # State
         self.dbw_enabled = False
@@ -104,7 +104,8 @@ class DBWNode(object):
         Updates state:
         - dbw_enabled
         """
-        self.dbw_enabled = msg
+        rospy.loginfo('DBW_ENABLED : {}'.format(msg.data))
+        self.dbw_enabled = msg.data
 
     def twist_callback(self, msg):
         """
