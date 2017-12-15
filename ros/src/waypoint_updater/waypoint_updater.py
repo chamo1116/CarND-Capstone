@@ -4,6 +4,7 @@ import rospy
 from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from geometry_msgs.msg import TwistStamped
 from std_msgs.msg import Int32
 
 import math
@@ -41,6 +42,7 @@ class WaypointUpdater(object):
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_callback)
         self.base_waypoint_subscriber = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
@@ -61,6 +63,9 @@ class WaypointUpdater(object):
 
         #Traffic light index
         self.traffic_light_index = NO_TRAFFIC_LIGHT # no traffic light.
+
+        # Current velocity
+        self.current_velocity = 0.
 
         self.loop()
 
@@ -130,22 +135,47 @@ class WaypointUpdater(object):
         else:
             traffic_index = traffic_index - closest_waypoint_idx
 
-        if traffic_index > LOOKAHEAD_WPS:
+        if traffic_index >= LOOKAHEAD_WPS:
             rospy.loginfo('TRAFFIC no traffic lights before LOOKAHEAD_WPS {}'.format(traffic_index))
             return waypoints
 
-        stop_buffer = 6
-        if traffic_index > stop_buffer:
-            traffic_index = traffic_index - stop_buffer
+        v_zero = self.current_velocity
 
-        points_before = 30
-        m = self.max_velocity / float(points_before)
-        for index in range(points_before):
-            self.set_waypoint_velocity(waypoints, traffic_index - points_before + index , self.max_velocity - m * ( index + 1 ))
+        if v_zero < 1.:
+            min_distance_to_stop = 1.
+            max_distance_to_stop = 5.
+        else:
+            min_distance_to_stop = 1.5 * v_zero
+            max_distance_to_stop = 2. * min_distance_to_stop
 
+        distance2stop = self.distance(waypoints, 0, traffic_index)
+        if distance2stop < min_distance_to_stop:
+            distance2stop = 0
+        else:
+            distance2stop -= min_distance_to_stop
+
+        if distance2stop < 0.0001:
+            m = 0.
+        else:
+            m = v_zero / distance2stop
+
+        for index in range(traffic_index):
+            distance = self.distance(waypoints, 0, index)
+            from_stop_distance = distance2stop - distance
+            if from_stop_distance <= min_distance_to_stop:
+                velocity = 0
+            else:
+                if from_stop_distance > max_distance_to_stop:
+                    velocity = self.max_velocity
+                else:
+                    velocity = v_zero - m * distance
+            self.set_waypoint_velocity(waypoints, index , velocity)
+            
         for index in range(traffic_index, LOOKAHEAD_WPS):
             self.set_waypoint_velocity(waypoints, index , 0)
-        rospy.loginfo('TRAFFIC traffic lights stop at {}, waypoints with zero {}'.format(traffic_index, LOOKAHEAD_WPS - traffic_index))
+
+
+        rospy.loginfo('TRAFFIC traffic lights stop at {}, distance to stop : {:.3f} waypoints with zero {}'.format(traffic_index, distance2stop, LOOKAHEAD_WPS - traffic_index))
         return waypoints
 
     def get_on_car_waypoint_x_y(self, current_possition, yaw_rad, index):
@@ -202,6 +232,8 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
+    def velocity_callback(self, msg):
+        self.current_velocity = msg.twist.linear.x
 
 if __name__ == '__main__':
     try:
