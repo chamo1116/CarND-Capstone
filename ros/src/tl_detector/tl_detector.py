@@ -64,6 +64,9 @@ class TLDetector(object):
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
+        
+
+
 
         rospy.loginfo('Traffic light detector initialized')
         rospy.spin()
@@ -238,13 +241,15 @@ class TLDetector(object):
             rospy.loginfo('Couldnt find waypoint in process_traffic_lights()')
             return -1, TrafficLight.UNKNOWN
 
-        #TODO. 
-        # add glue for real classifer here:
-        #
-        # self.get_light_state( self.lights[light_idx] )
-        # 
-        # using sim state for now
-        state = self.lights[light_idx].state  #this is only valid within simulator
+        use_simulator = False
+
+        self.tlclasses_d = { TrafficLight.RED : "RED", TrafficLight.YELLOW:"YELLOW", TrafficLight.GREEN:"GREEN", TrafficLight.UNKNOWN:"UNKNOWN" }
+   
+        if use_simulator:
+            state = self.get_light_state( self.lights[light_idx] )
+        else:
+            state = self.lights[light_idx].state  #this is only valid within simulator
+            rospy.loginfo(self.tlclasses_d[ state ] )
 
         return stop_waypoint_idx, state
 
