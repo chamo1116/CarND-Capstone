@@ -50,7 +50,6 @@ class TLDetector(object):
             s.pose.pose.position.x = stop[0]
             s.pose.pose.position.y = stop[1]
             s.pose.pose.position.z = 0
-            #rospy.loginfo('adding stop_line_position - [{},{}]'.format(stop[0], stop[1]))
             self.stop_line_positions_poses.append(s)
 
 
@@ -91,7 +90,6 @@ class TLDetector(object):
         self.has_image = True
         self.camera_image = msg
         light_wp, state = self.process_traffic_lights()
-        #rospy.loginfo("process_traffic_lights: {},{}".format(light_wp, state))
 
         '''
         Publish upcoming red lights at camera frequency.
@@ -241,16 +239,16 @@ class TLDetector(object):
             rospy.loginfo('Couldnt find waypoint in process_traffic_lights()')
             return -1, TrafficLight.UNKNOWN
 
-        use_simulator = False
+        use_detector_flag = True
 
         self.tlclasses_d = { TrafficLight.RED : "RED", TrafficLight.YELLOW:"YELLOW", TrafficLight.GREEN:"GREEN", TrafficLight.UNKNOWN:"UNKNOWN" }
    
-        if use_simulator:
+        if use_detector_flag:
             state = self.get_light_state( self.lights[light_idx] )
         else:
             state = self.lights[light_idx].state  #this is only valid within simulator
-            rospy.loginfo(self.tlclasses_d[ state ] )
 
+        rospy.loginfo(self.tlclasses_d[ state ] )
         return stop_waypoint_idx, state
 
 if __name__ == '__main__':
