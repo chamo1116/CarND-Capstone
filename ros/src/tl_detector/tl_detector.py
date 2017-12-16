@@ -27,6 +27,8 @@ class TLDetector(object):
         self.camera_image = None
         self.lights = []
 
+        self.tlclasses_d = { TrafficLight.RED : "RED", TrafficLight.YELLOW:"YELLOW", TrafficLight.GREEN:"GREEN", TrafficLight.UNKNOWN:"UNKNOWN" }
+
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
@@ -39,6 +41,7 @@ class TLDetector(object):
         '''
         sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
         sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
+        sub7 = rospy.Subscriber('/image_raw', Image, self.test_image_cb)
 
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
@@ -78,6 +81,15 @@ class TLDetector(object):
 
     def traffic_cb(self, msg):
         self.lights = msg.lights
+
+    def test_image_cb(self, msg):
+        if self.light_classifier is None:
+            rospy.logwarn('light_classifier not initialized yet')
+            return
+
+        cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        state = self.light_classifier.get_classification(cv_image)
+        rospy.loginfo(self.tlclasses_d[ state ] )
 
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
@@ -240,8 +252,6 @@ class TLDetector(object):
             return -1, TrafficLight.UNKNOWN
 
         use_detector_flag = True
-
-        self.tlclasses_d = { TrafficLight.RED : "RED", TrafficLight.YELLOW:"YELLOW", TrafficLight.GREEN:"GREEN", TrafficLight.UNKNOWN:"UNKNOWN" }
    
         if use_detector_flag:
             state = self.get_light_state( self.lights[light_idx] )
