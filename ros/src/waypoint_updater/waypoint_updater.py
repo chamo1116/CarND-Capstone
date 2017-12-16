@@ -4,6 +4,8 @@ import rospy
 from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from geometry_msgs.msg import TwistStamped
+from std_msgs.msg import Int32
 
 import math
 
@@ -23,6 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 50 # Number of waypoints we will publish. You can change this number
+NO_TRAFFIC_LIGHT = -1
 
 def get_car_xy_from_global_xy(car_x, car_y, yaw_rad, global_x, global_y):
     # Translate global point by car's position
@@ -39,13 +42,16 @@ class WaypointUpdater(object):
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_callback)
+        self.base_waypoint_subscriber = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         self.base_waypoints = None
+        self.base_waypoints_count = None
 
         self.current_pose = None
 
@@ -53,7 +59,13 @@ class WaypointUpdater(object):
         self.loop_frequency = 2 # Hz
 
         # Max velocity
-        self.max_velocity = 10 # mph
+        self.max_velocity = None # miles per second
+
+        #Traffic light index
+        self.traffic_light_index = NO_TRAFFIC_LIGHT # no traffic light.
+
+        # Current velocity
+        self.current_velocity = 0.
 
         self.loop()
 
@@ -93,23 +105,78 @@ class WaypointUpdater(object):
 
                 wcx, wcy = self.get_on_car_waypoint_x_y(p, yaw_rad, closest_waypoint_idx)
                 while wcx < 0.:
-                    closest_waypoint_idx = (closest_waypoint_idx + 1) % len(self.base_waypoints)
+                    closest_waypoint_idx = (closest_waypoint_idx + 1) % self.base_waypoints_count
                     wcx, wcy = self.get_on_car_waypoint_x_y(p, yaw_rad, closest_waypoint_idx)
 
                 next_waypoints = []
                 for loop_idx in range(LOOKAHEAD_WPS):
-                    wp_idx = (loop_idx + closest_waypoint_idx) % len(self.base_waypoints)
+                    wp_idx = (loop_idx + closest_waypoint_idx) % self.base_waypoints_count
                     next_waypoints.append(self.get_waypoint_to_sent(wp_idx))
 
                 rospy.loginfo('INDEX {} wc [{:.3f},{:.3f}]'.format(closest_waypoint_idx, wcx, wcy))
                 lane = Lane()
                 lane.header.frame_id = '/world'
                 lane.header.stamp = rospy.Time(0)
-                lane.waypoints = next_waypoints
+                lane.waypoints = self.adjust_velocity_to_stop(next_waypoints, closest_waypoint_idx)
                 self.final_waypoints_pub.publish(lane)
 
 
             rate.sleep()
+
+    def adjust_velocity_to_stop(self, waypoints, closest_waypoint_idx):
+        traffic_index = self.traffic_light_index
+        if traffic_index == NO_TRAFFIC_LIGHT:
+            rospy.loginfo('TRAFFIC no traffic lights ahead')
+            return waypoints
+
+        # Map traffic index to current list
+        if traffic_index < closest_waypoint_idx:
+            traffic_index = self.base_waypoints_count - closest_waypoint_idx + traffic_index
+        else:
+            traffic_index = traffic_index - closest_waypoint_idx
+
+        if traffic_index >= LOOKAHEAD_WPS:
+            rospy.loginfo('TRAFFIC no traffic lights before LOOKAHEAD_WPS {}'.format(traffic_index))
+            return waypoints
+
+        v_zero = self.current_velocity
+
+        if v_zero < 1.:
+            min_distance_to_stop = 1.
+            max_distance_to_stop = 5.
+        else:
+            min_distance_to_stop = 1.5 * v_zero
+            max_distance_to_stop = 2. * min_distance_to_stop
+
+        distance2stop = self.distance(waypoints, 0, traffic_index)
+        if distance2stop < min_distance_to_stop:
+            distance2stop = 0
+        else:
+            distance2stop -= min_distance_to_stop
+
+        if distance2stop < 0.0001:
+            m = 0.
+        else:
+            m = v_zero / distance2stop
+
+        for index in range(traffic_index):
+            distance = self.distance(waypoints, 0, index)
+            from_stop_distance = distance2stop - distance
+            if from_stop_distance <= min_distance_to_stop:
+                velocity = 0
+            else:
+                if from_stop_distance > max_distance_to_stop:
+                    velocity = self.max_velocity
+                else:
+                    velocity = v_zero - m * distance
+            self.set_waypoint_velocity(waypoints, index , velocity)
+            
+        for index in range(traffic_index, LOOKAHEAD_WPS):
+            self.set_waypoint_velocity(waypoints, index , 0)
+
+
+        rospy.loginfo('TRAFFIC traffic lights stop at {}, distance to stop : {:.3f} waypoints with zero {}'.format(traffic_index, distance2stop, LOOKAHEAD_WPS - traffic_index))
+        return waypoints
 
     def get_on_car_waypoint_x_y(self, current_possition, yaw_rad, index):
         wgx, wgy = self.get_waypoint_x_y(index)
@@ -122,8 +189,6 @@ class WaypointUpdater(object):
         return x, y
 
     def get_waypoint_to_sent(self, wp_idx):
-        # changes will be here when the red lights are detected.
-        # if the velocity is not set, 11 is set by default.
         self.set_waypoint_velocity(self.base_waypoints, wp_idx, self.max_velocity)
         return self.base_waypoints[wp_idx]
 
@@ -132,10 +197,21 @@ class WaypointUpdater(object):
         self.current_pose = msg.pose
 
     def waypoints_cb(self, lane):
+        if self.base_waypoints != None:
+            return
+
+        self.base_waypoint_subscriber.unregister()
+        self.base_waypoint_subscriber = None
+
+        self.max_velocity = max([self.get_waypoint_velocity(wp) for wp in lane.waypoints]) * .99
+        rospy.loginfo('MAX_VELOCITY : {}'.format(self.max_velocity))
+
+        self.base_waypoints_count = len(lane.waypoints)
         self.base_waypoints = lane.waypoints
 
+
     def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
+        self.traffic_light_index = msg.data;
         pass
 
     def obstacle_cb(self, msg):
@@ -156,6 +232,8 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
+    def velocity_callback(self, msg):
+        self.current_velocity = msg.twist.linear.x
 
 if __name__ == '__main__':
     try:

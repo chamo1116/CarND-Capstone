@@ -29,12 +29,11 @@ class Controller(object):
 
         self.steering_controller = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 
-        self.throttle_controller = PID(0.15, 0.0, 0.05, mn=decel_limit, mx=accel_limit)
+        self.throttle_controller = PID(0.15, 0.0, 0.09, mn=decel_limit, mx=accel_limit)
 
-        self.low_pass_filter = LowPassFilter(10, 1)
+        self.low_pass_filter = LowPassFilter(12.0, 1)
 
         self.last_timestamp = None
-
 
 
     def control(self, target_angular_velocity, target_linear_velocity, current_angular_velocity, current_linear_velocity, dbw_enabled):
@@ -45,7 +44,6 @@ class Controller(object):
             return 0., 0., 0.
 
         steer = self.steering_controller.get_steering(target_linear_velocity, target_angular_velocity, current_linear_velocity)
-        # steer = 0.
         throttle = 0.
         brake = 0.
 
@@ -55,9 +53,9 @@ class Controller(object):
             cte = target_linear_velocity - current_linear_velocity
             acceleration = self.throttle_controller.step(cte, dt)
 
-            # filtvalue = self.low_pass_filter.filt(steer)
-            # if self.low_pass_filter.ready:
-            #     steer = self.low_pass_filter.get()
+            filtvalue = self.low_pass_filter.filt(acceleration)
+            if self.low_pass_filter.ready:
+                acceleration = self.low_pass_filter.get()
 
             if acceleration > 0:
                 throttle = acceleration
@@ -66,7 +64,9 @@ class Controller(object):
 
 
         self.last_timestamp = current_timestamp
+
         rospy.loginfo('SENDING - [throttle,brake,steer]:[{:.4f},{:.4f},{:.4f}], [cA,cL]:[{:.4f},{:.4f}]m [tA, tL]:[{:.4f},{:.4f}]'.format(throttle, brake, steer,current_angular_velocity, current_linear_velocity,target_angular_velocity, target_linear_velocity))
+
         return throttle, brake, steer
 
     def reset(self):
