@@ -207,7 +207,7 @@ class TLDetector(object):
         # 2. Find the stop_line_position before such traffic signal position
         # 3. Find the waypoint just before and this stop_line_position 
 
-        if(self.pose==None):
+        if self.pose is None or self.waypoints is None or self.light_classifier is None:
             return -1, TrafficLight.UNKNOWN
 
 
