@@ -5,7 +5,7 @@ from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 from geometry_msgs.msg import TwistStamped
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Bool
 
 import math
 
@@ -39,10 +39,13 @@ def get_car_xy_from_global_xy(car_x, car_y, yaw_rad, global_x, global_y):
 
 class WaypointUpdater(object):
     def __init__(self):
+        self.tl_detector_initialized = False
+
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_callback)
+        rospy.Subscriber('/tl_detector_initialized', Bool, self.tl_detector_initialized_cb)
         self.base_waypoint_subscriber = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
@@ -76,6 +79,12 @@ class WaypointUpdater(object):
 
         rate = rospy.Rate(self.loop_frequency)
         while not rospy.is_shutdown():
+            # Stay still until traffic lights can be detected
+            if not self.tl_detector_initialized:
+                rospy.logwarn('Waypoint updater holding until traffic light detector is initialized')
+                rate.sleep()
+                continue
+
             if self.current_pose != None and self.base_waypoints != None:
                 xyz_position = self.current_pose.position
                 quaternion_orientation = self.current_pose.orientation
@@ -192,6 +201,8 @@ class WaypointUpdater(object):
         self.set_waypoint_velocity(self.base_waypoints, wp_idx, self.max_velocity)
         return self.base_waypoints[wp_idx]
 
+    def tl_detector_initialized_cb(self, msg):
+        self.tl_detector_initialized = True
 
     def pose_cb(self, msg):
         self.current_pose = msg.pose
