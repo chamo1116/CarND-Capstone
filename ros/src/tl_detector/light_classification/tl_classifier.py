@@ -1,3 +1,4 @@
+import rospy
 from styx_msgs.msg import TrafficLight
 import tensorflow as tf
 from PIL import Image
@@ -118,7 +119,7 @@ class TLClassifier(object):
                 elif ( box_h/box_w <1.6):
                     pass    # wrong ratio
                 else:
-                    print('detected bounding box: {} conf: {}'.format(box, detection_scores[idx]))
+                    rospy.loginfo('detected bounding box: {} conf: {}'.format(box, detection_scores[idx]))
                     ret = box
 
         return ret

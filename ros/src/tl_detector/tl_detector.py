@@ -47,7 +47,9 @@ class TLDetector(object):
         rely on the position of the light and the camera image to predict it.
         '''
         sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
+        # Manually set buffer size to reduce subscriber lag; ~32MB seems to work
+        # https://answers.ros.org/question/220502/image-subscriber-lag-despite-queue-1/
+        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1, buff_size=2**25)
         sub7 = rospy.Subscriber('/image_raw', Image, self.test_image_cb)
 
         config_string = rospy.get_param("/traffic_light_config")
